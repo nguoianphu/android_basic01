@@ -1,6 +1,4 @@
 # android_basic01
-=======
-# android_basic01
 
 From 
 
