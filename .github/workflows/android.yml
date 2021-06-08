@@ -1,0 +1,162 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: set up JDK 8
+      uses: actions/setup-java@v2
+      with:
+        java-version: '8'
+        distribution: 'adopt'
+        
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v2
+
+    - name: Grant execute permission for gradlew
+      if: runner.os != 'windows'
+      run: chmod +x gradlew
+      
+    - name: Build with Gradle - clean
+      if: runner.os != 'windows'
+      run: ./gradlew clean
+      
+    - name: Build with Gradle - Debug APK
+      if: runner.os != 'windows'
+      run: ./gradlew assembleDebug --stacktrace
+      
+    - name: Build with Gradle - Debug APK on Windows
+      if: runner.os == 'windows'
+      run: .\gradlew.bat assembleDebug --stacktrace
+      
+    - name: Build with Gradle - Unsigned APK
+      if: runner.os != 'windows'
+      run: ./gradlew assemble
+      
+    - name: Generate and sign Java keytool
+      if: runner.os != 'windows'
+      env:
+       MY_ZIP_PASSWORD: ${{ secrets.MY_ZIP_PASSWORD }}
+       BUILD_TOOLS: ${{env.BUILD_TOOLS}}
+      run: |
+        cd $GITHUB_WORKSPACE
+        export BUILD_TOOLS=$(cat app/build.gradle | grep buildToolsVersion | cut -d '"' -f2)
+        echo "BUILD_TOOLS=$BUILD_TOOLS" >> $GITHUB_ENV
+        echo "Signing our apk"
+        mkdir -p keys
+        echo "Generate a Private Certificate by keytool"
+        echo "https://developer.android.com/studio/build/building-cmdline#sign_cmdline"
+        keytool -genkey -v -noprompt \
+         -alias my-android-release-key \
+         -keystore $GITHUB_WORKSPACE/keys/my-android-release-key.jks \
+         -keyalg RSA -keysize 2048 -validity 10000 \
+         -storepass ${MY_ZIP_PASSWORD} \
+         -keypass ${MY_ZIP_PASSWORD} \
+         -dname "CN=nguoianphu.com, OU=NA, O=Company, L=HOCHIMINH, S=HOCHIMINH, C=VN"
+        echo "Export the certificate for the upload key to PEM format"
+        keytool -export -rfc -v -noprompt \
+            -storepass ${MY_ZIP_PASSWORD} \
+            -keypass ${MY_ZIP_PASSWORD} \
+            -keystore $GITHUB_WORKSPACE/keys/my-android-release-key.jks \
+            -alias my-android-release-key \
+            -file $GITHUB_WORKSPACE/keys/my-android-release-upload-certificat.pem
+        echo "Sign the APK with the key we just created"
+
+        cd $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS
+        echo "Align the unsigned APK using zipalign"
+        ./zipalign -v 4 \
+            $GITHUB_WORKSPACE/app/build/outputs/apk/release/app-release-unsigned.apk \
+            $GITHUB_WORKSPACE/app/build/outputs/apk/release/app-release-unsigned-aligned.apk
+        echo "Sign your APK with your private key using apksigner"
+        ./apksigner sign \
+            --ks $GITHUB_WORKSPACE/keys/my-android-release-key.jks \
+            --ks-key-alias my-android-release-key \
+            --ks-pass pass:${MY_ZIP_PASSWORD} \
+            --key-pass pass:${MY_ZIP_PASSWORD} \
+            --out $GITHUB_WORKSPACE/app/build/outputs/apk/release/app-release.apk \
+            $GITHUB_WORKSPACE/app/build/outputs/apk/release/app-release-unsigned-aligned.apk
+        echo "Verify that your APK is signed \
+                to confirm that an APK's signature \
+                will be verified successfully \
+                on all versions of the Android platform supported by the APK"
+        ./apksigner verify --verbose --print-certs $GITHUB_WORKSPACE/app/build/outputs/apk/release/app-release.apk
+        cd $GITHUB_WORKSPACE/
+        ls -la app/build/outputs/apk/release
+        echo "zip keys and certificates with password"
+        7z a -tzip -p${MY_ZIP_PASSWORD} app/build/outputs/apk/release/keys.zip -r keys
+      
+    - name: Create tag
+      if: runner.os != 'windows'
+      run: |
+        cd $GITHUB_WORKSPACE
+        export DATE=$(date +'DATE_%Y_%m_%d_%H%M%S')
+        export GIT_COMMIT=COMMIT_$(git log --format=%h -1)
+        export APP_NAME=$(cat settings.gradle | grep rootProject.name | cut -d '"' -f2)
+        export APP_VERSION_CURRENT=$(cat app/build.gradle | grep versionName | cut -d '"' -f2)
+        export APK_NAME=${APP_NAME}-${APP_VERSION_CURRENT}-${DATE}-${GIT_COMMIT}
+        export APK_NAME=${APK_NAME// /}
+        export TAG=${TAG:-${APK_NAME}}
+        git tag ${TAG// /}
+        git tag -l
+        echo "TAG=$TAG" >> $GITHUB_ENV
+        
+    - name: Create tag
+      if: runner.os == 'windows'
+      run: |
+        $DATE=$(Get-Date -Format "yyyy_MM_dd_Hms")
+        $GIT_COMMIT="COMMIT_$(git log --format=%h -1)"
+        $APP_NAME=$(((cat settings.gradle | Select-String rootProject.name ) -Split '"')[1])
+        $APP_VERSION_CURRENT=$(((cat app/build.gradle | Select-String versionName) -Split '"'))[1]
+        $APK_NAME=${APP_NAME}+${APP_VERSION_CURRENT}+${DATE}+${GIT_COMMIT}
+        git tag ${APK_NAME}
+        git tag -l
+        echo "TAG=$APK_NAME" >> $env:GITHUB_ENV
+        
+    - name: Release
+      if: runner.os != 'windows'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{env.TAG}}
+        files: |
+          app/build/outputs/apk/release/keys.zip
+          app/build/outputs/apk/release/app-release-unsigned.apk
+          app/build/outputs/apk/release/app-release.apk
+          app/build/outputs/apk/debug/app-debug.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Archive artifacts
+      if: runner.os != 'windows'
+      uses: actions/upload-artifact@v2
+      with:
+        name: build-outputs-ubuntu
+        path: |
+          app/build/outputs/apk/release/keys.zip
+          app/build/outputs/apk/release/*.apk
+          app/build/outputs/apk/debug/*.apk
+          
+    - name: Archive artifacts
+      if: runner.os == 'windows'
+      uses: actions/upload-artifact@v2
+      with:
+        name: build-outputs-windows
+        path: |
+          app/build/outputs/apk/release/keys.zip
+          app/build/outputs/apk/release/*.apk
+          app/build/outputs/apk/debug/*.apk
+          
