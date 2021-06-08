@@ -1,24 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.basic01">
+    package="com.kennah.wecatch">
+
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
     <application
+        android:name=".App"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Basic01">
+        android:theme="@style/AppTheme">
+
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version" />
+
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyC0ktWSa7BBtlQVyfXCsfd4MtNU5wV8C4U" />
+
+        <service
+            android:name=".module.main.service.MainService"
+            android:enabled="true"
+            android:exported="false"/>
+
+        <service android:name=".module.main.service.NotificationService"  />
+
+        <receiver android:name=".module.main.service.NotificationReceiver">
+            <intent-filter>
+                <action android:name="wecatch_android.notification.stop" />
+                <action android:name="wecatch_android.notification.stop.map" />
+            </intent-filter>
+        </receiver>
+
         <activity
-            android:name=".MainActivity"
-            android:label="@string/app_name"
-            android:theme="@style/Theme.Basic01.NoActionBar">
+            android:name="com.kennah.wecatch.module.main.ui.activity.MainActivity"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".module.filter.ui.activity.FilterActivity"
+            android:screenOrientation="portrait" />
+
+        <activity android:name=".module.settings.ui.activity.SettingsActivity"
+            android:screenOrientation="portrait" />
+
     </application>
 
 </manifest>
