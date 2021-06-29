@@ -29,9 +29,9 @@ jobs:
       if: runner.os != 'windows'
       run: chmod +x gradlew
       
-    - name: Build with Gradle - clean
-      if: runner.os != 'windows'
-      run: ./gradlew clean
+    # - name: Build with Gradle - clean
+      # if: runner.os != 'windows'
+      # run: ./gradlew clean
       
     - name: Build with Gradle - Debug APK
       if: runner.os != 'windows'
