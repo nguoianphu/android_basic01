@@ -45,6 +45,11 @@ jobs:
       if: runner.os != 'windows'
       run: ./gradlew assemble
       
+    - name: Build with Gradle - Android App Bundle
+      # Output is in app/build/outputs/bundle/release
+      if: runner.os != 'windows'
+      run: ./gradlew bundleRelease
+      
     - name: Generate and sign Java keytool
       if: runner.os != 'windows'
       env:
@@ -73,7 +78,6 @@ jobs:
             -alias my-android-release-key \
             -file $GITHUB_WORKSPACE/keys/my-android-release-upload-certificat.pem
         echo "Sign the APK with the key we just created"
-
         cd $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS
         echo "Align the unsigned APK using zipalign"
         ./zipalign -v 4 \
@@ -92,7 +96,13 @@ jobs:
                 will be verified successfully \
                 on all versions of the Android platform supported by the APK"
         ./apksigner verify --verbose --print-certs $GITHUB_WORKSPACE/app/build/outputs/apk/release/app-release.apk
-        cd $GITHUB_WORKSPACE/
+        cd $GITHUB_WORKSPACE
+        echo "Sign Android App Bundle by jarsigner"
+        echo "https://medium.com/androiddevelopers/building-your-first-app-bundle-bbcd228bf631"
+        jarsigner -storepass ${MY_ZIP_PASSWORD} \
+            -keypass ${MY_ZIP_PASSWORD} \
+            -keystore $GITHUB_WORKSPACE/keys/my-android-release-key.jks \
+             app/build/outputs/bundle/release/app-release.aab my-android-release-key
         ls -la app/build/outputs/apk/release
         echo "zip keys and certificates with password"
         7z a -tzip -p${MY_ZIP_PASSWORD} app/build/outputs/apk/release/keys.zip -r keys
@@ -134,6 +144,7 @@ jobs:
           app/build/outputs/apk/release/app-release-unsigned.apk
           app/build/outputs/apk/release/app-release.apk
           app/build/outputs/apk/debug/app-debug.apk
+          app/build/outputs/bundle/release/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
@@ -144,8 +155,9 @@ jobs:
         name: build-outputs-ubuntu
         path: |
           app/build/outputs/apk/release/keys.zip
-          app/build/outputs/apk/release/*.apk
-          app/build/outputs/apk/debug/*.apk
+          app/build/outputs/apk/release/*
+          app/build/outputs/apk/debug/*
+          app/build/outputs/bundle/release/*
           
     - name: Archive artifacts
       if: runner.os == 'windows'
@@ -154,6 +166,7 @@ jobs:
         name: build-outputs-windows
         path: |
           app/build/outputs/apk/release/keys.zip
-          app/build/outputs/apk/release/*.apk
-          app/build/outputs/apk/debug/*.apk
+          app/build/outputs/apk/release/*
+          app/build/outputs/apk/debug/*
+          app/build/outputs/bundle/release/*
           
